@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import pandas as pd
+import os
 
 # Create FastAPI instance
 app = FastAPI()
@@ -15,8 +16,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load trained model
-model = joblib.load("IPL_model.pkl")
+# Load trained model directly from local file
+try:
+    model = joblib.load("IPL_model.pkl")
+    print("Model loaded successfully!")
+except Exception as e:
+    print(f"Error loading model: {str(e)}")
+    model = None
 
 # Define input schema
 class MatchInput(BaseModel):
@@ -42,6 +48,10 @@ def overs_to_balls(overs: float) -> int:
 
 @app.post("/predict")
 def predict_win(input: MatchInput):
+    # Check if model is loaded
+    if model is None:
+        return {"error": "Model not available. Please check server logs."}
+    
     try:
         # Calculate derived metrics
         runs_left = input.total_runs_x - input.current_runs
@@ -92,13 +102,36 @@ def predict_win(input: MatchInput):
         return {"error": f"Prediction failed: {str(e)}"}
 
 
-# Optional: Add a health check endpoint
+# Health check endpoint
 @app.get("/health")
 def health_check():
-    return {"status": "healthy", "model_loaded": model is not None}
+    return {
+        "status": "healthy", 
+        "model_loaded": model is not None,
+        "model_status": "loaded" if model is not None else "not_loaded"
+    }
 
 
-# Optional: Add an endpoint to get valid teams and cities
+# Endpoint to check model status
+@app.post("/reload-model")
+def reload_model():
+    global model
+    try:
+        model = joblib.load("IPL_model.pkl")
+        return {
+            "success": True,
+            "model_loaded": True,
+            "message": "Model reloaded successfully"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "model_loaded": False,
+            "message": f"Failed to reload model: {str(e)}"
+        }
+
+
+# Add an endpoint to get valid teams and cities
 @app.get("/metadata")
 def get_metadata():
     return {
@@ -133,5 +166,21 @@ def get_metadata():
             'Navi Mumbai', 'Lucknow', 'Guwahati', 'Mohali'
         ]
     }
+
+# Root endpoint
+@app.get("/")
+def root():
+    return {
+        "message": "IPL Win Prediction API",
+        "status": "running",
+        "model_loaded": model is not None,
+        "endpoints": {
+            "predict": "/predict",
+            "health": "/health",
+            "metadata": "/metadata",
+            "reload_model": "/reload-model",
+            "docs": "/docs"
+        }
+    }
     
-handler = app    
+handler = app
