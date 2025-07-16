@@ -133,3 +133,5 @@ def get_metadata():
             'Navi Mumbai', 'Lucknow', 'Guwahati', 'Mohali'
         ]
     }
+    
+handler = app    
